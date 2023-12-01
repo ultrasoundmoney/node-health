@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
         let geth_peer_count = geth::peer_count(&geth_client).await?;
         if geth_peer_count < 10 {
-            info!("geth has less than 10 peers, not ready");
+            info!(geth_peer_count, "geth has less than 10 peers, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
@@ -77,8 +77,12 @@ async fn main() -> anyhow::Result<()> {
         info!("geth is ready");
 
         let lighthouse_peer_counts = node_health::lighthouse::peer_counts(&beacon_client).await?;
-        if lighthouse_peer_counts.peer_count() < 10 {
-            info!("lighthouse has less than 10 peers, not ready");
+        let lighthouse_peer_count = lighthouse_peer_counts.peer_count();
+        if lighthouse_peer_count < 10 {
+            info!(
+                lighthouse_peer_count,
+                "lighthouse has less than 10 peers, not ready"
+            );
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
