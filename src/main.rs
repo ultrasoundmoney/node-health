@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     // It can take a long long time for the geth and lighthouse nodes to start responding to
     // requests, so we wait until they are ready before we start the server.
-    const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 2);
+    const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 5);
     let start_time = SystemTime::now();
     loop {
         let geth_ping_ok = geth::ping_ok(&geth_client).await?;
