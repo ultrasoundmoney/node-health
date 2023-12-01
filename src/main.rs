@@ -25,13 +25,14 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let beacon_client = reqwest::Client::new();
+    let geth_client = reqwest::Client::new();
 
     // It can take a long long time for the geth and lighthouse nodes to start responding to
     // requests, so we wait until they are ready before we start the server.
     const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 2);
     let start_time = SystemTime::now();
     loop {
-        let geth_ping_ok = geth::ping_ok().await?;
+        let geth_ping_ok = geth::ping_ok(&geth_client).await?;
         let lighthouse_ping_ok = node_health::lighthouse::ping_ok(&beacon_client).await?;
 
         if geth_ping_ok && lighthouse_ping_ok {
@@ -53,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     loop {
-        let geth_syncing = geth::syncing().await?;
+        let geth_syncing = geth::syncing(&geth_client).await?;
         if geth_syncing {
             info!("geth is syncing, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -63,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
             debug!("geth is not syncing");
         }
 
-        let geth_peer_count = geth::peer_count().await?;
+        let geth_peer_count = geth::peer_count(&geth_client).await?;
         if geth_peer_count < 10 {
             info!("geth has less than 10 peers, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);

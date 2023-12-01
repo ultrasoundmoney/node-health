@@ -1,5 +1,6 @@
 use reqwest::Client;
 use serde::Deserialize;
+use tracing::debug;
 
 use crate::env::ENV_CONFIG;
 
@@ -105,8 +106,14 @@ pub async fn peer_counts(beacon_client: &Client) -> anyhow::Result<PeerCounts> {
 
 pub async fn ping_ok(beacon_client: &Client) -> anyhow::Result<bool> {
     let url = format!("{}/eth/v1/node/version", &ENV_CONFIG.beacon_url);
-    let res = beacon_client.get(url).send().await?;
-    Ok(res.status().is_success())
+    let res = beacon_client.get(url).send().await;
+    match res {
+        Ok(res) => Ok(res.status().is_success()),
+        Err(e) => {
+            debug!("lighthouse ping failed: {}", e);
+            Ok(false)
+        }
+    }
 }
 
 #[cfg(test)]

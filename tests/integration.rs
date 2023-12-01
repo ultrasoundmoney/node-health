@@ -2,19 +2,22 @@ use reqwest::Client;
 
 #[tokio::test]
 async fn test_geth_peer_count() -> anyhow::Result<()> {
-    node_health::geth::peer_count().await?;
+    let geth_client = Client::new();
+    node_health::geth::peer_count(&geth_client).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn test_geth_sync_status() -> anyhow::Result<()> {
-    node_health::geth::syncing().await?;
+    let geth_client = Client::new();
+    node_health::geth::syncing(&geth_client).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn test_geth_ping_ok() -> anyhow::Result<()> {
-    node_health::geth::ping_ok().await?;
+    let geth_client = Client::new();
+    node_health::geth::ping_ok(&geth_client).await?;
     Ok(())
 }
 

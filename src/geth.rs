@@ -1,13 +1,14 @@
+use reqwest::Client;
 use serde_json::{json, Value};
+use tracing::debug;
 
 use crate::env::ENV_CONFIG;
 
 #[allow(dead_code)]
-pub async fn syncing() -> anyhow::Result<bool> {
-    let client = reqwest::Client::new();
+pub async fn syncing(geth_client: &Client) -> anyhow::Result<bool> {
     let body: String =
         json!({ "jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1 }).to_string();
-    let res = client
+    let res = geth_client
         .post(&ENV_CONFIG.geth_url)
         .header("content-type", "application/json")
         .body(body)
@@ -20,11 +21,10 @@ pub async fn syncing() -> anyhow::Result<bool> {
     Ok(geth_sync_status)
 }
 
-pub async fn peer_count() -> anyhow::Result<u64> {
-    let client = reqwest::Client::new();
+pub async fn peer_count(geth_client: &Client) -> anyhow::Result<u64> {
     let body: String =
         json!({ "jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1 }).to_string();
-    let res = client
+    let res = geth_client
         .post(&ENV_CONFIG.geth_url)
         .header("content-type", "application/json")
         .body(body)
@@ -40,15 +40,21 @@ pub async fn peer_count() -> anyhow::Result<u64> {
     Ok(peer_count)
 }
 
-pub async fn ping_ok() -> anyhow::Result<bool> {
-    let client = reqwest::Client::new();
+pub async fn ping_ok(geth_client: &Client) -> anyhow::Result<bool> {
     let body: String =
         json!({ "jsonrpc":"2.0","method":"net_version","params":[],"id":1 }).to_string();
-    let res = client
+    let res = geth_client
         .post(&ENV_CONFIG.geth_url)
         .header("content-type", "application/json")
         .body(body)
         .send()
-        .await?;
-    Ok(res.status().is_success())
+        .await;
+
+    match res {
+        Ok(res) => Ok(res.status().is_success()),
+        Err(e) => {
+            debug!("geth ping failed: {}", e);
+            Ok(false)
+        }
+    }
 }
