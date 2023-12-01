@@ -74,12 +74,15 @@ async fn main() -> anyhow::Result<()> {
             2
         };
         if geth_peer_count < min_peer_count {
-            info!(geth_peer_count, "geth has less than 10 peers, not ready");
+            info!(
+                geth_peer_count,
+                "geth has less than {min_peer_count} peers, not ready"
+            );
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
         } else {
-            debug!("geth has more than 10 peers");
+            debug!("geth has more than {min_peer_count} peers");
         }
 
         info!("geth is ready");
