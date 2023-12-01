@@ -13,17 +13,25 @@ async fn test_geth_sync_status() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_lighthouse_ui_health() -> anyhow::Result<()> {
-    let client = Client::new();
-    let health = node_health::lighthouse::ui_health(&client).await?;
-    dbg!(health);
+async fn test_lighthouse_peer_counts() -> anyhow::Result<()> {
+    let beacon_client = Client::new();
+    let peer_counts = node_health::lighthouse::peer_counts(&beacon_client).await?;
+    dbg!(peer_counts);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_lighthouse_sync_status() -> anyhow::Result<()> {
+    let beacon_client = Client::new();
+    let sync_status = node_health::lighthouse::sync_status(&beacon_client).await?;
+    dbg!(sync_status);
     Ok(())
 }
 
 #[tokio::test]
 async fn test_lighthouse_eth1_syncing() -> anyhow::Result<()> {
-    let client = Client::new();
-    let syncing = node_health::lighthouse::eth1_syncing(&client).await?;
+    let beacon_client = Client::new();
+    let syncing = node_health::lighthouse::eth1_syncing(&beacon_client).await?;
     dbg!(syncing);
     Ok(())
 }

@@ -1,51 +1,45 @@
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::Value;
 
 use crate::env::ENV_CONFIG;
 
-#[derive(Debug, Deserialize, PartialEq)]
-struct SyncingFinalized {
-    #[serde(rename = "SyncingFinalized")]
-    syncing_finalized: Value,
-}
-
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(untagged)]
-enum SyncState {
-    StringStatus(String),
-    Syncing(SyncingFinalized),
+#[derive(Debug, Deserialize)]
+struct SyncingData {
+    el_offline: bool,
+    is_optimistic: bool,
+    is_syncing: bool,
+    #[serde(deserialize_with = "deserialize_u64_from_string")]
+    sync_distance: u64,
 }
 
 #[derive(Debug, Deserialize)]
-struct HealthData {
-    connected_peers: u64,
-    sync_state: SyncState,
+pub struct Syncing {
+    data: SyncingData,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UiHealth {
-    data: HealthData,
-}
-
-impl UiHealth {
+impl Syncing {
     pub fn is_syncing(&self) -> bool {
-        let synced = match &self.data.sync_state {
-            SyncState::StringStatus(str) => str == "Synced",
-            _ => false,
-        };
-        !synced
+        self.data.is_syncing
     }
 
-    pub fn peer_count(&self) -> u64 {
-        self.data.connected_peers
+    pub fn is_optimistic(&self) -> bool {
+        self.data.is_optimistic
+    }
+
+    pub fn is_el_offline(&self) -> bool {
+        self.data.el_offline
+    }
+
+    // Sync distance will be > 0 when a node restarts and is catching up __even if it is not syncing__.
+    pub fn sync_distance(&self) -> u64 {
+        self.data.sync_distance
     }
 }
 
-pub async fn ui_health(beacon_client: &Client) -> anyhow::Result<UiHealth> {
-    let url = format!("{}/lighthouse/ui/health", &ENV_CONFIG.beacon_url);
+pub async fn sync_status(beacon_client: &Client) -> anyhow::Result<Syncing> {
+    let url = format!("{}/eth/v1/node/syncing", &ENV_CONFIG.beacon_url);
     let res = beacon_client.get(url).send().await?;
-    let body: UiHealth = res.json().await?;
+    let body: Syncing = res.json().await?;
     Ok(body)
 }
 
@@ -77,97 +71,41 @@ pub async fn eth1_syncing(beacon_client: &Client) -> anyhow::Result<Eth1Syncing>
     Ok(body)
 }
 
+fn deserialize_u64_from_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = serde::Deserialize::deserialize(deserializer)?;
+    s.parse::<u64>().map_err(serde::de::Error::custom)
+}
+
+#[derive(Debug, Deserialize)]
+struct PeerCountsData {
+    #[serde(deserialize_with = "deserialize_u64_from_string")]
+    connected: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PeerCounts {
+    data: PeerCountsData,
+}
+
+impl PeerCounts {
+    pub fn peer_count(&self) -> u64 {
+        self.data.connected
+    }
+}
+
+pub async fn peer_counts(beacon_client: &Client) -> anyhow::Result<PeerCounts> {
+    let url = format!("{}/eth/v1/node/peer_count", &ENV_CONFIG.beacon_url);
+    let res = beacon_client.get(url).send().await?;
+    let body: PeerCounts = res.json().await?;
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-
-    use super::*;
-
-    #[test]
-    fn decode_lighthouse_health_syncing() {
-        let json = json!({
-            "data": {
-                "app_uptime": 761,
-                "connected_peers": 87,
-                "cpu_cores": 6,
-                "cpu_threads": 12,
-                "disk_bytes_free": 3228685,
-                "disk_bytes_total": 1886832,
-                "free_memory": 41908879,
-                "global_cpu_frequency": 3.4,
-                "host_name": "supply-delta-geth",
-                "kernel_version": "5.15.0-83-generic",
-                "nat_open": true,
-                "network_bytes_total_received": 499582704,
-                "network_bytes_total_transmit": 270064843,
-                "network_name": "enp3s0f0",
-                "os_version": "Linux 22.04 Ubuntu",
-                "sync_state": {
-                    "SyncingFinalized": {
-                       "start_slot": "5478848",
-                       "target_slot": "5478944"
-                    },
-                },
-                "sys_loadavg_1": 4.78,
-                "sys_loadavg_15": 7.6,
-                "sys_loadavg_5": 8.22,
-                "system_name": "Ubuntu",
-                "system_uptime": 6837520,
-                "total_memory": 3355867,
-                "used_memory": 117984
-            }
-        });
-
-        let health: super::UiHealth = serde_json::from_value(json).unwrap();
-        assert_eq!(health.data.connected_peers, 87);
-        assert_eq!(
-            health.data.sync_state,
-            SyncState::Syncing(SyncingFinalized {
-                syncing_finalized: json!({
-                    "start_slot": "5478848",
-                    "target_slot": "5478944"
-                })
-            })
-        );
-    }
-
-    #[test]
-    fn decode_lighthouse_health_synced() {
-        let json = json!({
-            "data": {
-                "app_uptime": 761,
-                "connected_peers": 87,
-                "cpu_cores": 6,
-                "cpu_threads": 12,
-                "disk_bytes_free": 3228685,
-                "disk_bytes_total": 1886832,
-                "free_memory": 41908879,
-                "global_cpu_frequency": 3.4,
-                "host_name": "supply-delta-geth",
-                "kernel_version": "5.15.0-83-generic",
-                "nat_open": true,
-                "network_bytes_total_received": 499582704,
-                "network_bytes_total_transmit": 270064843,
-                "network_name": "enp3s0f0",
-                "os_version": "Linux 22.04 Ubuntu",
-                "sync_state": "Synced",
-                "sys_loadavg_1": 4.78,
-                "sys_loadavg_15": 7.6,
-                "sys_loadavg_5": 8.22,
-                "system_name": "Ubuntu",
-                "system_uptime": 6837520,
-                "total_memory": 3355867,
-                "used_memory": 117984
-            }
-        });
-
-        let health: super::UiHealth = serde_json::from_value(json).unwrap();
-        assert_eq!(health.data.connected_peers, 87);
-        assert_eq!(
-            health.data.sync_state,
-            SyncState::StringStatus("Synced".to_string())
-        );
-    }
 
     #[test]
     fn decode_eth1_synced() {
@@ -202,5 +140,36 @@ mod tests {
         });
         let health: super::Eth1Syncing = serde_json::from_value(json).unwrap();
         assert!(health.eth1_is_syncing());
+    }
+
+    #[test]
+    fn decode_peer_counts() {
+        let json = json!({
+            "data": {
+                "connected": "87",
+                "connecting": "0",
+                "disconnected": "719",
+                "disconnecting": "0"
+            }
+        });
+        let health: super::PeerCounts = serde_json::from_value(json).unwrap();
+        assert_eq!(health.data.connected, 87);
+    }
+
+    #[test]
+    fn decode_syncing() {
+        let json = json!({
+            "data": {
+                "el_offline": false,
+                "head_slot": "5478944",
+                "is_optimistic": false,
+                "is_syncing": false,
+                "sync_distance": "0"
+            }
+        });
+        let health: super::Syncing = serde_json::from_value(json).unwrap();
+        assert!(!health.is_syncing());
+        assert!(!health.is_optimistic());
+        assert!(!health.is_el_offline());
     }
 }

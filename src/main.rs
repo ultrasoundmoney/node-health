@@ -49,9 +49,19 @@ async fn main() -> anyhow::Result<()> {
 
         info!("geth is ready");
 
-        let lighthouse_ui_health = node_health::lighthouse::ui_health(&beacon_client).await?;
+        let lighthouse_peer_counts = node_health::lighthouse::peer_counts(&beacon_client).await?;
+        if lighthouse_peer_counts.peer_count() < 10 {
+            info!("lighthouse has less than 10 peers, not ready");
+            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            sleep(Duration::from_secs(4)).await;
+            continue;
+        } else {
+            debug!("lighthouse has more than 10 peers");
+        }
 
-        if lighthouse_ui_health.is_syncing() {
+        let lighthouse_sync_status = node_health::lighthouse::sync_status(&beacon_client).await?;
+
+        if lighthouse_sync_status.is_syncing() {
             info!("lighthouse is syncing, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
@@ -60,13 +70,35 @@ async fn main() -> anyhow::Result<()> {
             debug!("lighthouse is not syncing");
         }
 
-        if lighthouse_ui_health.peer_count() < 10 {
-            info!("lighthouse has less than 10 peers, not ready");
+        if lighthouse_sync_status.is_optimistic() {
+            info!("lighthouse sync is optimistic, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
         } else {
-            debug!("lighthouse has more than 10 peers");
+            debug!("lighthouse is not optimistic");
+        }
+
+        if lighthouse_sync_status.is_el_offline() {
+            info!("lighthouse says is el offline, not ready");
+            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            sleep(Duration::from_secs(4)).await;
+            continue;
+        } else {
+            debug!("lighthouse is not el offline");
+        }
+
+        let sync_distance = lighthouse_sync_status.sync_distance();
+        if sync_distance > 0 {
+            info!(
+                sync_distance,
+                "lighthouse sync distance is greater than 0, not ready"
+            );
+            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            sleep(Duration::from_secs(4)).await;
+            continue;
+        } else {
+            debug!("lighthouse sync distance is 0");
         }
 
         let lighthouse_eth1_syncing = node_health::lighthouse::eth1_syncing(&beacon_client).await?;
