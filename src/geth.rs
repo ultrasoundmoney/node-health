@@ -39,3 +39,16 @@ pub async fn peer_count() -> anyhow::Result<u64> {
     let peer_count = u64::from_str_radix(&raw_peer_count, 16)?;
     Ok(peer_count)
 }
+
+pub async fn ping_ok() -> anyhow::Result<bool> {
+    let client = reqwest::Client::new();
+    let body: String =
+        json!({ "jsonrpc":"2.0","method":"net_version","params":[],"id":1 }).to_string();
+    let res = client
+        .post(&ENV_CONFIG.geth_url)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await?;
+    Ok(res.status().is_success())
+}

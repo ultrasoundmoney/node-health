@@ -2,7 +2,7 @@ mod server;
 
 use std::{
     sync::{atomic::AtomicBool, Arc},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use node_health::{geth, log};
@@ -25,6 +25,32 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let beacon_client = reqwest::Client::new();
+
+    // It can take a long long time for the geth and lighthouse nodes to start responding to
+    // requests, so we wait until they are ready before we start the server.
+    const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 2);
+    let start_time = SystemTime::now();
+    loop {
+        let geth_ping_ok = geth::ping_ok().await?;
+        let lighthouse_ping_ok = node_health::lighthouse::ping_ok(&beacon_client).await?;
+
+        if geth_ping_ok && lighthouse_ping_ok {
+            info!("geth and lighthouse are up");
+            break;
+        } else {
+            debug!(
+                "geth_ping_ok: {}, lighthouse_ping_ok: {}",
+                geth_ping_ok, lighthouse_ping_ok
+            );
+        }
+
+        if start_time.elapsed()? > MAX_STARTUP_TIME {
+            anyhow::bail!("geth and lighthouse did not start responding in time");
+        }
+
+        debug!("sleeping 4s until next check");
+        sleep(Duration::from_secs(4)).await;
+    }
 
     loop {
         let geth_syncing = geth::syncing().await?;
