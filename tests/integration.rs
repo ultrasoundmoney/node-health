@@ -38,14 +38,6 @@ async fn test_lighthouse_sync_status() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_lighthouse_eth1_syncing() -> anyhow::Result<()> {
-    let beacon_client = Client::new();
-    let syncing = node_health::lighthouse::eth1_syncing(&beacon_client).await?;
-    dbg!(syncing);
-    Ok(())
-}
-
-#[tokio::test]
 async fn test_lighthouse_ping_ok() -> anyhow::Result<()> {
     let beacon_client = Client::new();
     let ping_ok = node_health::lighthouse::ping_ok(&beacon_client).await?;
