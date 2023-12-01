@@ -5,7 +5,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use node_health::{geth, log};
+use node_health::{
+    env::{Network, ENV_CONFIG},
+    geth, log,
+};
 use tokio::{spawn, sync::Notify, time::sleep};
 use tracing::{debug, info};
 
@@ -65,7 +68,12 @@ async fn main() -> anyhow::Result<()> {
         }
 
         let geth_peer_count = geth::peer_count(&geth_client).await?;
-        if geth_peer_count < 10 {
+        let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
+            10
+        } else {
+            2
+        };
+        if geth_peer_count < min_peer_count {
             info!(geth_peer_count, "geth has less than 10 peers, not ready");
             is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
