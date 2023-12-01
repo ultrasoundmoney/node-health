@@ -149,26 +149,6 @@ async fn main() -> anyhow::Result<()> {
             debug!("lighthouse sync distance is 0");
         }
 
-        let lighthouse_eth1_syncing = node_health::lighthouse::eth1_syncing(&beacon_client).await?;
-
-        if lighthouse_eth1_syncing.eth1_is_syncing() {
-            info!("lighthouse thinks eth1 is syncing, not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse thinks eth1 is not syncing");
-        }
-
-        if !lighthouse_eth1_syncing.is_cached_and_ready() {
-            info!("lighthouse cache is not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse cache is ready");
-        }
-
         info!("lighthouse is ready");
 
         info!("beacon node is ready for traffic");

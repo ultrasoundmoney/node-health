@@ -44,34 +44,6 @@ pub async fn sync_status(beacon_client: &Client) -> anyhow::Result<Syncing> {
     Ok(body)
 }
 
-#[derive(Debug, Deserialize)]
-struct Eth1SyncingData {
-    eth1_node_sync_status_percentage: f64,
-    lighthouse_is_cached_and_ready: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Eth1Syncing {
-    data: Eth1SyncingData,
-}
-
-impl Eth1Syncing {
-    pub fn eth1_is_syncing(&self) -> bool {
-        self.data.eth1_node_sync_status_percentage < 100.0
-    }
-
-    pub fn is_cached_and_ready(&self) -> bool {
-        self.data.lighthouse_is_cached_and_ready
-    }
-}
-
-pub async fn eth1_syncing(beacon_client: &Client) -> anyhow::Result<Eth1Syncing> {
-    let url = format!("{}/lighthouse/eth1/syncing", &ENV_CONFIG.beacon_url);
-    let res = beacon_client.get(url).send().await?;
-    let body: Eth1Syncing = res.json().await?;
-    Ok(body)
-}
-
 fn deserialize_u64_from_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -119,41 +91,6 @@ pub async fn ping_ok(beacon_client: &Client) -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-
-    #[test]
-    fn decode_eth1_synced() {
-        let json = json!({
-            "data": {
-                "eth1_node_sync_status_percentage": 100.0,
-                "head_block_number": 18692195,
-                "head_block_timestamp": 1701441371,
-                "latest_cached_block_number": 18690654,
-                "latest_cached_block_timestamp": 1701422687,
-                "lighthouse_is_cached_and_ready": true,
-                "voting_target_timestamp": 1701388375
-            }
-        });
-        let health: super::Eth1Syncing = serde_json::from_value(json).unwrap();
-        assert!(!health.eth1_is_syncing());
-        assert!(health.is_cached_and_ready());
-    }
-
-    #[test]
-    fn decode_eth1_syncing() {
-        let json = json!({
-            "data": {
-                "eth1_node_sync_status_percentage": 99.99991975188567,
-                "head_block_number": 18692195,
-                "head_block_timestamp": 1701441371,
-                "latest_cached_block_number": 18690654,
-                "latest_cached_block_timestamp": 1701422687,
-                "lighthouse_is_cached_and_ready": true,
-                "voting_target_timestamp": 1701388375
-            }
-        });
-        let health: super::Eth1Syncing = serde_json::from_value(json).unwrap();
-        assert!(health.eth1_is_syncing());
-    }
 
     #[test]
     fn decode_peer_counts() {
