@@ -89,7 +89,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         let sync_distance = lighthouse_sync_status.sync_distance();
-        if sync_distance > 0 {
+        // We allow to be one slot behind, this naturally happens all the time.
+        if sync_distance > 1 {
             info!(
                 sync_distance,
                 "lighthouse sync distance is greater than 0, not ready"
