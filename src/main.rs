@@ -67,22 +67,27 @@ async fn main() -> anyhow::Result<()> {
             debug!("geth is not syncing");
         }
 
-        let geth_peer_count = geth::peer_count(&geth_client).await?;
-        let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
-            10
+        // Peer check doesn't work on goerli, so we skip it.
+        if ENV_CONFIG.network == Network::Goerli {
+            info!("goerli network, skipping geth peer count check");
         } else {
-            2
-        };
-        if geth_peer_count < min_peer_count {
-            info!(
-                geth_peer_count,
-                "geth has less than {min_peer_count} peers, not ready"
-            );
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("geth has more than {min_peer_count} peers");
+            let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
+                10
+            } else {
+                2
+            };
+            let geth_peer_count = geth::peer_count(&geth_client).await?;
+            if geth_peer_count < min_peer_count {
+                info!(
+                    geth_peer_count,
+                    "geth has less than {min_peer_count} peers, not ready"
+                );
+                is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                sleep(Duration::from_secs(4)).await;
+                continue;
+            } else {
+                debug!("geth has more than {min_peer_count} peers");
+            }
         }
 
         info!("geth is ready");
