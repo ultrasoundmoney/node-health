@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
 
         // Peer check doesn't work on goerli, so we skip it.
         if ENV_CONFIG.network == Network::Goerli {
-            info!("goerli network, skipping geth peer count check");
+            debug!("goerli network, skipping geth peer count check");
         } else {
             let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
                 10
