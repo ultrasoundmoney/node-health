@@ -57,14 +57,24 @@ async fn main() -> anyhow::Result<()> {
     }
 
     loop {
-        let geth_syncing = geth::syncing(&geth_client).await?;
-        if geth_syncing {
-            info!("geth is syncing, not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("geth is not syncing");
+        let geth_syncing = geth::syncing(&geth_client).await;
+        match geth_syncing {
+            Ok(geth_syncing) => {
+                if geth_syncing {
+                    info!("geth is syncing");
+                    is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                    sleep(Duration::from_secs(4)).await;
+                    continue;
+                } else {
+                    debug!("geth is not syncing");
+                }
+            }
+            Err(e) => {
+                debug!("geth sync check failed: {}, not ready", e);
+                is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                sleep(Duration::from_secs(4)).await;
+                continue;
+            }
         }
 
         // Peer check doesn't work on goerli, so we skip it.
@@ -76,17 +86,27 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 2
             };
-            let geth_peer_count = geth::peer_count(&geth_client).await?;
-            if geth_peer_count < min_peer_count {
-                info!(
-                    geth_peer_count,
-                    "geth has less than {min_peer_count} peers, not ready"
-                );
-                is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-                sleep(Duration::from_secs(4)).await;
-                continue;
-            } else {
-                debug!("geth has more than {min_peer_count} peers");
+            let geth_peer_count = geth::peer_count(&geth_client).await;
+            match geth_peer_count {
+                Ok(geth_peer_count) => {
+                    if geth_peer_count < min_peer_count {
+                        info!(
+                            geth_peer_count,
+                            "geth has less than {min_peer_count} peers, not ready"
+                        );
+                        is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                        sleep(Duration::from_secs(4)).await;
+                        continue;
+                    } else {
+                        debug!("geth has more than {min_peer_count} peers");
+                    }
+                }
+                Err(e) => {
+                    debug!("geth peer count check failed: {}, not ready", e);
+                    is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                    sleep(Duration::from_secs(4)).await;
+                    continue;
+                }
             }
         }
 
