@@ -92,8 +92,6 @@ pub struct EnvConfig {
     pub beacon_url: String,
     pub bind_public_interface: bool,
     pub geth_url: String,
-    pub log_json: bool,
-    pub log_perf: bool,
     pub network: Network,
 }
 
@@ -102,8 +100,6 @@ fn get_env_config() -> EnvConfig {
         beacon_url: get_env_var("BEACON_URL").expect("BEACON_URL not set"),
         bind_public_interface: get_env_bool("BIND_PUBLIC_INTERFACE").unwrap_or(true),
         geth_url: get_env_var("GETH_URL").expect("GETH_URL not set"),
-        log_json: get_env_bool("LOG_JSON").unwrap_or(false),
-        log_perf: get_env_bool("LOG_PERF").unwrap_or(false),
         network: get_network(),
     }
 }
