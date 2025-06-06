@@ -97,7 +97,7 @@ pub fn get_network() -> Network {
 pub struct EnvConfig {
     pub beacon_url: String,
     pub bind_public_interface: bool,
-    pub geth_url: String,
+    pub execution_node_url: String,
     pub network: Network,
 }
 
@@ -105,7 +105,7 @@ fn get_env_config() -> EnvConfig {
     EnvConfig {
         beacon_url: get_env_var("BEACON_URL").expect("BEACON_URL not set"),
         bind_public_interface: get_env_bool("BIND_PUBLIC_INTERFACE").unwrap_or(true),
-        geth_url: get_env_var("GETH_URL").expect("GETH_URL not set"),
+        execution_node_url: get_env_var("EXECUTION_NODE_URL").expect("EXECUTION_NODE_URL not set"),
         network: get_network(),
     }
 }

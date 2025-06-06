@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use anyhow::Context;
 use axum::{extract::State, response::IntoResponse, routing::get, Router, Server};
@@ -13,7 +16,7 @@ pub struct AppState {
 }
 
 async fn is_ready_handler(state: State<AppState>) -> impl IntoResponse {
-    if state.is_ready.load(std::sync::atomic::Ordering::Relaxed) {
+    if state.is_ready.load(Ordering::Relaxed) {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE

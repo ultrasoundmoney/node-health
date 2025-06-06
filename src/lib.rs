@@ -1,4 +1,4 @@
 pub mod env;
-pub mod geth;
+pub mod execution_node;
 pub mod lighthouse;
 pub mod log;

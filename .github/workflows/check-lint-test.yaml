@@ -4,7 +4,7 @@ name: Check Lint Test
 
 env:
   BEACON_URL: http://54.38.38.164:5052
-  GETH_URL: http://54.38.38.164:8545
+  EXECUTION_NODE_URL: http://54.38.38.164:8545
 
 jobs:
   check:

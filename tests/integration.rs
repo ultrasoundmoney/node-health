@@ -1,23 +1,23 @@
 use reqwest::Client;
 
 #[tokio::test]
-async fn test_geth_peer_count() -> anyhow::Result<()> {
-    let geth_client = Client::new();
-    node_health::geth::peer_count(&geth_client).await?;
+async fn test_execution_node_peer_count() -> anyhow::Result<()> {
+    let execution_node_client = Client::new();
+    node_health::execution_node::peer_count(&execution_node_client).await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn test_geth_sync_status() -> anyhow::Result<()> {
-    let geth_client = Client::new();
-    node_health::geth::syncing(&geth_client).await?;
+async fn test_execution_node_sync_status() -> anyhow::Result<()> {
+    let execution_node_client = Client::new();
+    node_health::execution_node::syncing(&execution_node_client).await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn test_geth_ping_ok() -> anyhow::Result<()> {
-    let geth_client = Client::new();
-    node_health::geth::ping_ok(&geth_client).await?;
+async fn test_execution_node_ping_ok() -> anyhow::Result<()> {
+    let execution_node_client = Client::new();
+    node_health::execution_node::ping_ok(&execution_node_client).await?;
     Ok(())
 }
 

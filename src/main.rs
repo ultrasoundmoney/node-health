@@ -7,7 +7,7 @@ use std::{
 
 use node_health::{
     env::{Network, ENV_CONFIG},
-    geth, log,
+    execution_node, log,
 };
 use tokio::{spawn, sync::Notify, time::sleep};
 use tracing::{debug, info};
@@ -28,28 +28,28 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let beacon_client = reqwest::Client::new();
-    let geth_client = reqwest::Client::new();
+    let execution_node_client = reqwest::Client::new();
 
-    // It can take a long long time for the geth and lighthouse nodes to start responding to
+    // It can take a long long time for the execution_node and lighthouse nodes to start responding to
     // requests, so we wait until they are ready before we start the server.
     const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 15);
     let start_time = SystemTime::now();
     loop {
-        let geth_ping_ok = geth::ping_ok(&geth_client).await?;
+        let execution_node_ping_ok = execution_node::ping_ok(&execution_node_client).await?;
         let lighthouse_ping_ok = node_health::lighthouse::ping_ok(&beacon_client).await?;
 
-        if geth_ping_ok && lighthouse_ping_ok {
-            info!("geth and lighthouse are up");
+        if execution_node_ping_ok && lighthouse_ping_ok {
+            info!("execution_node and lighthouse are up");
             break;
         } else {
             debug!(
-                "geth_ping_ok: {}, lighthouse_ping_ok: {}",
-                geth_ping_ok, lighthouse_ping_ok
+                "execution_node_ping_ok: {}, lighthouse_ping_ok: {}",
+                execution_node_ping_ok, lighthouse_ping_ok
             );
         }
 
         if start_time.elapsed()? > MAX_STARTUP_TIME {
-            anyhow::bail!("geth and lighthouse did not start responding in time");
+            anyhow::bail!("execution_node and lighthouse did not start responding in time");
         }
 
         debug!("sleeping 4s until next check");
@@ -57,20 +57,20 @@ async fn main() -> anyhow::Result<()> {
     }
 
     loop {
-        let geth_syncing = geth::syncing(&geth_client).await;
-        match geth_syncing {
-            Ok(geth_syncing) => {
-                if geth_syncing {
-                    info!("geth is syncing");
+        let execution_node_syncing = execution_node::syncing(&execution_node_client).await;
+        match execution_node_syncing {
+            Ok(execution_node_syncing) => {
+                if execution_node_syncing {
+                    info!("execution_node is syncing");
                     is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
                     sleep(Duration::from_secs(4)).await;
                     continue;
                 } else {
-                    debug!("geth is not syncing");
+                    debug!("execution_node is not syncing");
                 }
             }
             Err(e) => {
-                debug!("geth sync check failed: {}, not ready", e);
+                debug!("execution_node sync check failed: {}, not ready", e);
                 is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
                 sleep(Duration::from_secs(4)).await;
                 continue;
@@ -79,30 +79,31 @@ async fn main() -> anyhow::Result<()> {
 
         // Peer check doesn't work on goerli, so we skip it.
         if ENV_CONFIG.network == Network::Goerli {
-            debug!("goerli network, skipping geth peer count check");
+            debug!("goerli network, skipping execution_node peer count check");
         } else {
             let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
                 5
             } else {
                 2
             };
-            let geth_peer_count = geth::peer_count(&geth_client).await;
-            match geth_peer_count {
-                Ok(geth_peer_count) => {
-                    if geth_peer_count < min_peer_count {
+            let execution_node_peer_count =
+                execution_node::peer_count(&execution_node_client).await;
+            match execution_node_peer_count {
+                Ok(execution_node_peer_count) => {
+                    if execution_node_peer_count < min_peer_count {
                         info!(
-                            geth_peer_count,
-                            "geth has less than {min_peer_count} peers, not ready"
+                            execution_node_peer_count,
+                            "execution_node has less than {min_peer_count} peers, not ready"
                         );
                         is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
                         sleep(Duration::from_secs(4)).await;
                         continue;
                     } else {
-                        debug!("geth has more than {min_peer_count} peers");
+                        debug!("execution_node has more than {min_peer_count} peers");
                     }
                 }
                 Err(e) => {
-                    debug!("geth peer count check failed: {}, not ready", e);
+                    debug!("execution_node peer count check failed: {}, not ready", e);
                     is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
                     sleep(Duration::from_secs(4)).await;
                     continue;
@@ -110,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        info!("geth is ready");
+        info!("execution_node is ready");
 
         let lighthouse_peer_counts = node_health::lighthouse::peer_counts(&beacon_client).await?;
         let lighthouse_peer_count = lighthouse_peer_counts.peer_count();
