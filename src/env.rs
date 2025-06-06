@@ -61,6 +61,8 @@ pub fn get_env_bool(key: &str) -> Option<bool> {
 pub enum Network {
     Mainnet,
     Goerli,
+    Holesky,
+    Hoodi,
 }
 
 impl fmt::Display for Network {
@@ -68,6 +70,8 @@ impl fmt::Display for Network {
         match self {
             Network::Mainnet => write!(f, "mainnet"),
             Network::Goerli => write!(f, "goerli"),
+            Network::Holesky => write!(f, "holesky"),
+            Network::Hoodi => write!(f, "hoodi"),
         }
     }
 }
@@ -82,7 +86,9 @@ pub fn get_network() -> Network {
         Some(str) => match str.to_lowercase().as_ref() {
             "mainnet" => Network::Mainnet,
             "goerli" => Network::Goerli,
-            _ => panic!("NETWORK present: {str}, but not one of [mainnet, goerli], panicking!"),
+            "holesky" => Network::Holesky,
+            "hoodi" => Network::Hoodi,
+            _ => panic!("NETWORK present: {str}, but not one of [mainnet, goerli, holesky, hoodi], panicking!"),
         },
     }
 }
