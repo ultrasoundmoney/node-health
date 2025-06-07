@@ -73,3 +73,62 @@ impl ExecutionNode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ping_ok() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":"net_version_is_usually_a_string"}"#)
+            .create_async()
+            .await;
+
+        let execution_node = ExecutionNode::new(server.url());
+        let ping_ok = execution_node.ping_ok().await.unwrap();
+
+        assert!(ping_ok);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_peer_count() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":"0x10"}"#)
+            .create_async()
+            .await;
+
+        let execution_node = ExecutionNode::new(server.url());
+        let peer_count = execution_node.peer_count().await.unwrap();
+
+        assert_eq!(peer_count, 16);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_syncing() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":false}"#)
+            .create_async()
+            .await;
+
+        let execution_node = ExecutionNode::new(server.url());
+        let syncing = execution_node.syncing().await.unwrap();
+
+        assert!(!syncing);
+        mock.assert_async().await;
+    }
+}

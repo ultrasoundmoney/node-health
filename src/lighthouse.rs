@@ -104,6 +104,8 @@ impl PeerCounts {
 mod tests {
     use serde_json::json;
 
+    use super::Lighthouse;
+
     #[test]
     fn decode_peer_counts() {
         let json = json!({
@@ -133,5 +135,74 @@ mod tests {
         assert!(!health.is_syncing());
         assert!(!health.is_optimistic());
         assert!(!health.is_el_offline());
+    }
+
+    #[tokio::test]
+    async fn test_ping_ok() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/eth/v1/node/version")
+            .with_status(200)
+            .create_async()
+            .await;
+
+        let lighthouse = Lighthouse::new(server.url());
+        let ping_ok = lighthouse.ping_ok().await.unwrap();
+
+        assert!(ping_ok);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_peer_counts() {
+        let mut server = mockito::Server::new_async().await;
+        let peer_count_response = json!({
+            "data": {
+                "connected": "87",
+                "connecting": "0",
+                "disconnected": "719",
+                "disconnecting": "0"
+            }
+        });
+        let mock = server
+            .mock("GET", "/eth/v1/node/peer_count")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&peer_count_response).unwrap())
+            .create_async()
+            .await;
+
+        let lighthouse = Lighthouse::new(server.url());
+        let peer_counts = lighthouse.peer_counts().await.unwrap();
+
+        assert_eq!(peer_counts.peer_count(), 87);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_sync_status() {
+        let mut server = mockito::Server::new_async().await;
+        let sync_status_response = json!({
+            "data": {
+                "el_offline": false,
+                "head_slot": "5478944",
+                "is_optimistic": false,
+                "is_syncing": false,
+                "sync_distance": "0"
+            }
+        });
+        let mock = server
+            .mock("GET", "/eth/v1/node/syncing")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&sync_status_response).unwrap())
+            .create_async()
+            .await;
+
+        let lighthouse = Lighthouse::new(server.url());
+        let sync_status = lighthouse.sync_status().await.unwrap();
+
+        assert!(!sync_status.is_syncing());
+        mock.assert_async().await;
     }
 }
