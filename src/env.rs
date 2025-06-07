@@ -99,6 +99,8 @@ pub struct EnvConfig {
 }
 
 fn get_env_config() -> EnvConfig {
+    dotenvy::dotenv().ok();
+
     EnvConfig {
         beacon_url: get_env_var("BEACON_URL").expect("BEACON_URL not set"),
         bind_public_interface: get_env_bool("BIND_PUBLIC_INTERFACE").unwrap_or(true),
