@@ -1,16 +1,13 @@
 //! Fns to read variables from the environment more conveniently and help other functions figure
 //! out what environment they're running in.
 
-use std::{env, fmt};
+use std::{env, fmt, sync::LazyLock};
 
-use lazy_static::lazy_static;
 use tracing::{debug, warn};
 
 const SECRET_LOG_BLACKLIST: [&str; 0] = [];
 
-lazy_static! {
-    pub static ref ENV_CONFIG: EnvConfig = get_env_config();
-}
+pub static ENV_CONFIG: LazyLock<EnvConfig> = LazyLock::new(get_env_config);
 
 fn obfuscate_if_secret(blacklist: &[&str], key: &str, value: &str) -> String {
     if blacklist.contains(&key) {
