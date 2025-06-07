@@ -2,7 +2,45 @@ use reqwest::Client;
 use serde::Deserialize;
 use tracing::debug;
 
-use crate::env::ENV_CONFIG;
+pub struct Lighthouse {
+    pub node_url: String,
+    client: Client,
+}
+
+impl Lighthouse {
+    pub fn new(node_url: String) -> Self {
+        Self {
+            node_url,
+            client: Client::new(),
+        }
+    }
+
+    pub async fn sync_status(&self) -> anyhow::Result<Syncing> {
+        let url = format!("{}/eth/v1/node/syncing", &self.node_url);
+        let res = self.client.get(url).send().await?;
+        let body: Syncing = res.json().await?;
+        Ok(body)
+    }
+
+    pub async fn peer_counts(&self) -> anyhow::Result<PeerCounts> {
+        let url = format!("{}/eth/v1/node/peer_count", &self.node_url);
+        let res = self.client.get(url).send().await?;
+        let body: PeerCounts = res.json().await?;
+        Ok(body)
+    }
+
+    pub async fn ping_ok(&self) -> anyhow::Result<bool> {
+        let url = format!("{}/eth/v1/node/version", &self.node_url);
+        let res = self.client.get(url).send().await;
+        match res {
+            Ok(res) => Ok(res.status().is_success()),
+            Err(e) => {
+                debug!("lighthouse ping failed: {}", e);
+                Ok(false)
+            }
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct SyncingData {
@@ -37,13 +75,6 @@ impl Syncing {
     }
 }
 
-pub async fn sync_status(beacon_client: &Client) -> anyhow::Result<Syncing> {
-    let url = format!("{}/eth/v1/node/syncing", &ENV_CONFIG.beacon_url);
-    let res = beacon_client.get(url).send().await?;
-    let body: Syncing = res.json().await?;
-    Ok(body)
-}
-
 fn deserialize_u64_from_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -66,25 +97,6 @@ pub struct PeerCounts {
 impl PeerCounts {
     pub fn peer_count(&self) -> u64 {
         self.data.connected
-    }
-}
-
-pub async fn peer_counts(beacon_client: &Client) -> anyhow::Result<PeerCounts> {
-    let url = format!("{}/eth/v1/node/peer_count", &ENV_CONFIG.beacon_url);
-    let res = beacon_client.get(url).send().await?;
-    let body: PeerCounts = res.json().await?;
-    Ok(body)
-}
-
-pub async fn ping_ok(beacon_client: &Client) -> anyhow::Result<bool> {
-    let url = format!("{}/eth/v1/node/version", &ENV_CONFIG.beacon_url);
-    let res = beacon_client.get(url).send().await;
-    match res {
-        Ok(res) => Ok(res.status().is_success()),
-        Err(e) => {
-            debug!("lighthouse ping failed: {}", e);
-            Ok(false)
-        }
     }
 }
 

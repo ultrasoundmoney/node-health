@@ -7,7 +7,9 @@ use std::{
 
 use node_health::{
     env::{Network, ENV_CONFIG},
-    execution_node, log,
+    execution_node::ExecutionNode,
+    lighthouse::Lighthouse,
+    log,
 };
 use tokio::{spawn, sync::Notify, time::sleep};
 use tracing::{debug, info};
@@ -27,16 +29,16 @@ async fn main() -> anyhow::Result<()> {
         async move { server::serve(is_ready, &shutdown_notify).await }
     });
 
-    let beacon_client = reqwest::Client::new();
-    let execution_node_client = reqwest::Client::new();
+    let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
+    let lighthouse = Lighthouse::new(ENV_CONFIG.beacon_url.clone());
 
     // It can take a long long time for the execution_node and lighthouse nodes to start responding to
     // requests, so we wait until they are ready before we start the server.
     const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 15);
     let start_time = SystemTime::now();
     loop {
-        let execution_node_ping_ok = execution_node::ping_ok(&execution_node_client).await?;
-        let lighthouse_ping_ok = node_health::lighthouse::ping_ok(&beacon_client).await?;
+        let execution_node_ping_ok = execution_node.ping_ok().await?;
+        let lighthouse_ping_ok = lighthouse.ping_ok().await?;
 
         if execution_node_ping_ok && lighthouse_ping_ok {
             info!("execution_node and lighthouse are up");
@@ -57,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     loop {
-        let execution_node_syncing = execution_node::syncing(&execution_node_client).await;
+        let execution_node_syncing = execution_node.syncing().await;
         match execution_node_syncing {
             Ok(execution_node_syncing) => {
                 if execution_node_syncing {
@@ -86,8 +88,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 2
             };
-            let execution_node_peer_count =
-                execution_node::peer_count(&execution_node_client).await;
+            let execution_node_peer_count = execution_node.peer_count().await;
             match execution_node_peer_count {
                 Ok(execution_node_peer_count) => {
                     if execution_node_peer_count < min_peer_count {
@@ -113,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
 
         info!("execution_node is ready");
 
-        let lighthouse_peer_counts = node_health::lighthouse::peer_counts(&beacon_client).await?;
+        let lighthouse_peer_counts = lighthouse.peer_counts().await?;
         let lighthouse_peer_count = lighthouse_peer_counts.peer_count();
         if lighthouse_peer_count < 10 {
             info!(
@@ -127,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
             debug!("lighthouse has more than 10 peers");
         }
 
-        let lighthouse_sync_status = node_health::lighthouse::sync_status(&beacon_client).await?;
+        let lighthouse_sync_status = lighthouse.sync_status().await?;
 
         if lighthouse_sync_status.is_syncing() {
             info!("lighthouse is syncing, not ready");
