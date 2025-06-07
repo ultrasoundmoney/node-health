@@ -3,8 +3,8 @@ on: [push]
 name: Check Lint Test
 
 env:
-  BEACON_URL: http://54.38.38.164:5052
-  EXECUTION_NODE_URL: http://54.38.38.164:8545
+  BEACON_URL: ${{ secrets.BEACON_URL }}
+  EXECUTION_NODE_URL: ${{ secrets.EXECUTION_NODE_URL }}
 
 jobs:
   check:
