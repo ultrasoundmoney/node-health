@@ -11,7 +11,9 @@ use node_health::{
     lighthouse::Lighthouse,
     log,
 };
-use tokio::{spawn, sync::Notify, time::sleep};
+use std::sync::atomic::Ordering;
+use tokio::sync::oneshot;
+use tokio::{spawn, time::sleep};
 use tracing::{debug, info};
 
 #[tokio::main]
@@ -20,13 +22,29 @@ async fn main() -> anyhow::Result<()> {
 
     info!("starting node-health");
 
-    let shutdown_notify = Notify::new();
-
     let is_ready = Arc::new(AtomicBool::new(false));
+    // Shutdown channels: one for server, one for main loop
+    let (server_shutdown_tx, server_shutdown_rx) = oneshot::channel::<()>();
+    let (main_shutdown_tx, mut main_shutdown_rx) = oneshot::channel::<()>();
 
+    // Start HTTP server with graceful shutdown support
     spawn({
         let is_ready = is_ready.clone();
-        async move { server::serve(is_ready, &shutdown_notify).await }
+        async move { server::serve(is_ready, server_shutdown_rx).await }
+    });
+
+    // Termination signal listener: SIGTERM/SIGINT (Kubernetes sends SIGTERM)
+    spawn({
+        let is_ready = is_ready.clone();
+        let server_shutdown_tx = server_shutdown_tx;
+        let main_shutdown_tx = main_shutdown_tx;
+        async move {
+            shutdown_signal().await;
+            info!("termination signal received; shutting down");
+            is_ready.store(false, Ordering::Relaxed);
+            let _ = server_shutdown_tx.send(());
+            let _ = main_shutdown_tx.send(());
+        }
     });
 
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
@@ -64,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(execution_node_syncing) => {
                 if execution_node_syncing {
                     info!("execution_node is syncing");
-                    is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                    is_ready.store(false, Ordering::Relaxed);
                     sleep(Duration::from_secs(4)).await;
                     continue;
                 } else {
@@ -73,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Err(e) => {
                 debug!("execution_node sync check failed: {}, not ready", e);
-                is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                is_ready.store(false, Ordering::Relaxed);
                 sleep(Duration::from_secs(4)).await;
                 continue;
             }
@@ -96,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
                             execution_node_peer_count,
                             "execution_node has less than {min_peer_count} peers, not ready"
                         );
-                        is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                        is_ready.store(false, Ordering::Relaxed);
                         sleep(Duration::from_secs(4)).await;
                         continue;
                     } else {
@@ -105,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Err(e) => {
                     debug!("execution_node peer count check failed: {}, not ready", e);
-                    is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+                    is_ready.store(false, Ordering::Relaxed);
                     sleep(Duration::from_secs(4)).await;
                     continue;
                 }
@@ -121,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                 lighthouse_peer_count,
                 "lighthouse has less than 10 peers, not ready"
             );
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            is_ready.store(false, Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
         } else {
@@ -132,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
 
         if lighthouse_sync_status.is_syncing() {
             info!("lighthouse is syncing, not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            is_ready.store(false, Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
         } else {
@@ -141,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
 
         if lighthouse_sync_status.is_optimistic() {
             info!("lighthouse sync is optimistic, not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
+            is_ready.store(false, Ordering::Relaxed);
             sleep(Duration::from_secs(4)).await;
             continue;
         } else {
@@ -174,9 +192,36 @@ async fn main() -> anyhow::Result<()> {
         info!("lighthouse is ready");
 
         info!("beacon node is ready for traffic");
-        is_ready.store(true, std::sync::atomic::Ordering::Relaxed);
+        is_ready.store(true, Ordering::Relaxed);
 
         debug!("sleeping 4s until next check");
-        sleep(Duration::from_secs(4)).await;
+        tokio::select! {
+            _ = sleep(Duration::from_secs(4)) => {},
+            _ = &mut main_shutdown_rx => { break; }
+        }
+    }
+    info!("shutdown complete");
+    Ok(())
+}
+
+// Cross-platform shutdown signal future.
+// - On Unix: waits for SIGTERM or SIGINT
+// - Elsewhere: waits for Ctrl-C
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = signal(SignalKind::terminate()).expect("failed to bind SIGTERM");
+        let mut int = signal(SignalKind::interrupt()).expect("failed to bind SIGINT");
+        tokio::select! {
+            _ = term.recv() => {},
+            _ = int.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for ctrl_c");
     }
 }
