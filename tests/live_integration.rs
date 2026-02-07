@@ -3,6 +3,7 @@ use node_health::env::ENV_CONFIG;
 use node_health::execution_node::ExecutionNode;
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_execution_node_peer_count() -> anyhow::Result<()> {
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
     execution_node.peer_count().await?;
@@ -10,6 +11,7 @@ async fn test_execution_node_peer_count() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_execution_node_is_syncing() -> anyhow::Result<()> {
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
     execution_node.is_syncing().await?;
@@ -17,6 +19,7 @@ async fn test_execution_node_is_syncing() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_execution_node_block_age() -> anyhow::Result<()> {
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
     let age = execution_node.latest_block_age_secs().await?;
@@ -26,6 +29,7 @@ async fn test_execution_node_block_age() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_execution_node_ping_ok() -> anyhow::Result<()> {
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
     execution_node.ping_ok().await?;
@@ -33,6 +37,7 @@ async fn test_execution_node_ping_ok() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_consensus_peer_counts() -> anyhow::Result<()> {
     let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
     let peer_counts = consensus.peer_counts().await?;
@@ -41,6 +46,7 @@ async fn test_consensus_peer_counts() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_consensus_health() -> anyhow::Result<()> {
     let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
     let status = consensus.health().await?;
@@ -49,6 +55,7 @@ async fn test_consensus_health() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires live node"]
 async fn test_consensus_ping_ok() -> anyhow::Result<()> {
     let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
     let ping_ok = consensus.ping_ok().await?;
