@@ -219,11 +219,4 @@ mod tests {
         std::env::remove_var("NETWORK");
         assert_eq!(get_network(), Network::Mainnet);
     }
-
-    #[test]
-    #[ignore = "this test breaks NETWORK for parallel tests"]
-    fn test_get_network_panics() {
-        std::env::set_var("NETWORK", "invalid_network");
-        get_network();
-    }
 }
