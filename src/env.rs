@@ -54,19 +54,35 @@ pub fn get_env_bool(key: &str) -> Option<bool> {
     })
 }
 
+pub const BLOCK_RECENCY_THRESHOLD_SECS: u64 = 48;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Network {
     Mainnet,
-    Goerli,
     Holesky,
     Hoodi,
+}
+
+impl Network {
+    pub fn min_el_peer_count(&self) -> u64 {
+        match self {
+            Network::Mainnet => 5,
+            _ => 2,
+        }
+    }
+
+    pub fn min_cl_peer_count(&self) -> u64 {
+        match self {
+            Network::Mainnet => 10,
+            _ => 5,
+        }
+    }
 }
 
 impl fmt::Display for Network {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Network::Mainnet => write!(f, "mainnet"),
-            Network::Goerli => write!(f, "goerli"),
             Network::Holesky => write!(f, "holesky"),
             Network::Hoodi => write!(f, "hoodi"),
         }
@@ -82,10 +98,9 @@ pub fn get_network() -> Network {
         }
         Some(str) => match str.to_lowercase().as_ref() {
             "mainnet" => Network::Mainnet,
-            "goerli" => Network::Goerli,
             "holesky" => Network::Holesky,
             "hoodi" => Network::Hoodi,
-            _ => panic!("NETWORK present: {str}, but not one of [mainnet, goerli, holesky, hoodi], panicking!"),
+            _ => panic!("NETWORK present: {str}, but not one of [mainnet, holesky, hoodi], panicking!"),
         },
     }
 }
@@ -192,14 +207,14 @@ mod tests {
         std::env::set_var("NETWORK", "mainnet");
         assert_eq!(get_network(), Network::Mainnet);
 
-        std::env::set_var("NETWORK", "goerli");
-        assert_eq!(get_network(), Network::Goerli);
-
         std::env::set_var("NETWORK", "Mainnet");
         assert_eq!(get_network(), Network::Mainnet);
 
-        std::env::set_var("NETWORK", "Goerli");
-        assert_eq!(get_network(), Network::Goerli);
+        std::env::set_var("NETWORK", "holesky");
+        assert_eq!(get_network(), Network::Holesky);
+
+        std::env::set_var("NETWORK", "hoodi");
+        assert_eq!(get_network(), Network::Hoodi);
 
         std::env::remove_var("NETWORK");
         assert_eq!(get_network(), Network::Mainnet);

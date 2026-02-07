@@ -2,12 +2,12 @@ use reqwest::Client;
 use serde::Deserialize;
 use tracing::debug;
 
-pub struct Lighthouse {
+pub struct ConsensusNode {
     pub node_url: String,
     client: Client,
 }
 
-impl Lighthouse {
+impl ConsensusNode {
     pub fn new(node_url: String) -> Self {
         Self {
             node_url,
@@ -15,11 +15,12 @@ impl Lighthouse {
         }
     }
 
-    pub async fn sync_status(&self) -> anyhow::Result<Syncing> {
-        let url = format!("{}/eth/v1/node/syncing", &self.node_url);
+    /// Calls the standard Beacon API health endpoint.
+    /// Returns the HTTP status code: 200=ready, 206=syncing, 503=not ready.
+    pub async fn health(&self) -> anyhow::Result<u16> {
+        let url = format!("{}/eth/v1/node/health", &self.node_url);
         let res = self.client.get(url).send().await?;
-        let body: Syncing = res.json().await?;
-        Ok(body)
+        Ok(res.status().as_u16())
     }
 
     pub async fn peer_counts(&self) -> anyhow::Result<PeerCounts> {
@@ -35,43 +36,10 @@ impl Lighthouse {
         match res {
             Ok(res) => Ok(res.status().is_success()),
             Err(e) => {
-                debug!("lighthouse ping failed: {}", e);
+                debug!("consensus node ping failed: {}", e);
                 Ok(false)
             }
         }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct SyncingData {
-    el_offline: bool,
-    is_optimistic: bool,
-    is_syncing: bool,
-    #[serde(deserialize_with = "deserialize_u64_from_string")]
-    sync_distance: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Syncing {
-    data: SyncingData,
-}
-
-impl Syncing {
-    pub fn is_syncing(&self) -> bool {
-        self.data.is_syncing
-    }
-
-    pub fn is_optimistic(&self) -> bool {
-        self.data.is_optimistic
-    }
-
-    pub fn is_el_offline(&self) -> bool {
-        self.data.el_offline
-    }
-
-    // Sync distance will be > 0 when a node restarts and is catching up __even if it is not syncing__.
-    pub fn sync_distance(&self) -> u64 {
-        self.data.sync_distance
     }
 }
 
@@ -104,7 +72,7 @@ impl PeerCounts {
 mod tests {
     use serde_json::json;
 
-    use super::Lighthouse;
+    use super::ConsensusNode;
 
     #[test]
     fn decode_peer_counts() {
@@ -120,23 +88,6 @@ mod tests {
         assert_eq!(health.data.connected, 87);
     }
 
-    #[test]
-    fn decode_syncing() {
-        let json = json!({
-            "data": {
-                "el_offline": false,
-                "head_slot": "5478944",
-                "is_optimistic": false,
-                "is_syncing": false,
-                "sync_distance": "0"
-            }
-        });
-        let health: super::Syncing = serde_json::from_value(json).unwrap();
-        assert!(!health.is_syncing());
-        assert!(!health.is_optimistic());
-        assert!(!health.is_el_offline());
-    }
-
     #[tokio::test]
     async fn test_ping_ok() {
         let mut server = mockito::Server::new_async().await;
@@ -146,8 +97,8 @@ mod tests {
             .create_async()
             .await;
 
-        let lighthouse = Lighthouse::new(server.url());
-        let ping_ok = lighthouse.ping_ok().await.unwrap();
+        let consensus = ConsensusNode::new(server.url());
+        let ping_ok = consensus.ping_ok().await.unwrap();
 
         assert!(ping_ok);
         mock.assert_async().await;
@@ -172,37 +123,42 @@ mod tests {
             .create_async()
             .await;
 
-        let lighthouse = Lighthouse::new(server.url());
-        let peer_counts = lighthouse.peer_counts().await.unwrap();
+        let consensus = ConsensusNode::new(server.url());
+        let peer_counts = consensus.peer_counts().await.unwrap();
 
         assert_eq!(peer_counts.peer_count(), 87);
         mock.assert_async().await;
     }
 
     #[tokio::test]
-    async fn test_sync_status() {
+    async fn test_health_ready() {
         let mut server = mockito::Server::new_async().await;
-        let sync_status_response = json!({
-            "data": {
-                "el_offline": false,
-                "head_slot": "5478944",
-                "is_optimistic": false,
-                "is_syncing": false,
-                "sync_distance": "0"
-            }
-        });
         let mock = server
-            .mock("GET", "/eth/v1/node/syncing")
+            .mock("GET", "/eth/v1/node/health")
             .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(serde_json::to_string(&sync_status_response).unwrap())
             .create_async()
             .await;
 
-        let lighthouse = Lighthouse::new(server.url());
-        let sync_status = lighthouse.sync_status().await.unwrap();
+        let consensus = ConsensusNode::new(server.url());
+        let status = consensus.health().await.unwrap();
 
-        assert!(!sync_status.is_syncing());
+        assert_eq!(status, 200);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_health_syncing() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/eth/v1/node/health")
+            .with_status(206)
+            .create_async()
+            .await;
+
+        let consensus = ConsensusNode::new(server.url());
+        let status = consensus.health().await.unwrap();
+
+        assert_eq!(status, 206);
         mock.assert_async().await;
     }
 }

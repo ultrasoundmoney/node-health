@@ -6,15 +6,15 @@ use std::{
 };
 
 use node_health::{
-    env::{Network, ENV_CONFIG},
+    consensus::ConsensusNode,
+    env::{BLOCK_RECENCY_THRESHOLD_SECS, ENV_CONFIG},
     execution_node::ExecutionNode,
-    lighthouse::Lighthouse,
     log,
 };
 use std::sync::atomic::Ordering;
 use tokio::sync::oneshot;
 use tokio::{spawn, time::sleep};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -48,153 +48,123 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
-    let lighthouse = Lighthouse::new(ENV_CONFIG.beacon_url.clone());
+    let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
 
-    // It can take a long long time for the execution_node and lighthouse nodes to start responding to
-    // requests, so we wait until they are ready before we start the server.
+    // It can take a long time for nodes to start responding to requests, so we
+    // wait until they are reachable before entering the health check loop.
     const MAX_STARTUP_TIME: Duration = Duration::from_secs(60 * 15);
     let start_time = SystemTime::now();
     loop {
-        let execution_node_ping_ok = execution_node.ping_ok().await?;
-        let lighthouse_ping_ok = lighthouse.ping_ok().await?;
+        let el_ping_ok = execution_node.ping_ok().await?;
+        let cl_ping_ok = consensus.ping_ok().await?;
 
-        if execution_node_ping_ok && lighthouse_ping_ok {
-            info!("execution_node and lighthouse are up");
+        if el_ping_ok && cl_ping_ok {
+            info!("execution node and consensus node are up");
             break;
         } else {
-            debug!(
-                "execution_node_ping_ok: {}, lighthouse_ping_ok: {}",
-                execution_node_ping_ok, lighthouse_ping_ok
-            );
+            debug!(el_ping_ok, cl_ping_ok, "waiting for nodes to come up");
         }
 
         if start_time.elapsed()? > MAX_STARTUP_TIME {
-            anyhow::bail!("execution_node and lighthouse did not start responding in time");
+            anyhow::bail!("execution node and consensus node did not start responding in time");
         }
 
         debug!("sleeping 4s until next check");
         sleep(Duration::from_secs(4)).await;
     }
 
+    let min_el_peers = ENV_CONFIG.network.min_el_peer_count();
+    let min_cl_peers = ENV_CONFIG.network.min_cl_peer_count();
+
     loop {
-        let execution_node_syncing = execution_node.syncing().await;
-        match execution_node_syncing {
-            Ok(execution_node_syncing) => {
-                if execution_node_syncing {
-                    info!("execution_node is syncing");
-                    is_ready.store(false, Ordering::Relaxed);
-                    sleep(Duration::from_secs(4)).await;
-                    continue;
-                } else {
-                    debug!("execution_node is not syncing");
-                }
+        // Run all checks, capturing errors as strings rather than propagating.
+        let el_syncing = execution_node
+            .is_syncing()
+            .await
+            .map_err(|e| e.to_string());
+
+        let el_block_age = execution_node
+            .latest_block_age_secs()
+            .await
+            .map_err(|e| e.to_string());
+
+        let el_peers = execution_node
+            .peer_count()
+            .await
+            .map_err(|e| e.to_string());
+
+        let cl_health = consensus.health().await.map_err(|e| e.to_string());
+
+        let cl_peers = consensus
+            .peer_counts()
+            .await
+            .map(|pc| pc.peer_count())
+            .map_err(|e| e.to_string());
+
+        // Evaluate each criterion.
+        let el_not_syncing = el_syncing.as_ref() == Ok(&false);
+        let el_block_fresh = el_block_age
+            .as_ref()
+            .map(|age| *age < BLOCK_RECENCY_THRESHOLD_SECS)
+            .unwrap_or(false);
+        let el_peers_ok = el_peers.as_ref().map(|p| *p >= min_el_peers).unwrap_or(false);
+        let cl_healthy = cl_health.as_ref() == Ok(&200);
+        let cl_peers_ok = cl_peers.as_ref().map(|p| *p >= min_cl_peers).unwrap_or(false);
+
+        let ready = el_not_syncing && el_block_fresh && el_peers_ok && cl_healthy && cl_peers_ok;
+
+        // Format values for logging — show the value or the error.
+        let el_syncing_str = match &el_syncing {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("err: {e}"),
+        };
+        let el_block_age_str = match &el_block_age {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("err: {e}"),
+        };
+        let el_peers_str = match &el_peers {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("err: {e}"),
+        };
+        let cl_health_str = match &cl_health {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("err: {e}"),
+        };
+        let cl_peers_str = match &cl_peers {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("err: {e}"),
+        };
+
+        info!(
+            ready,
+            check = "health_cycle",
+            el_syncing = %el_syncing_str,
+            el_block_age_secs = %el_block_age_str,
+            el_peers = %el_peers_str,
+            cl_health = %cl_health_str,
+            cl_peers = %cl_peers_str,
+        );
+
+        if !ready {
+            if !el_not_syncing {
+                warn!(el_syncing = %el_syncing_str, "EL is syncing or check failed");
             }
-            Err(e) => {
-                debug!("execution_node sync check failed: {}, not ready", e);
-                is_ready.store(false, Ordering::Relaxed);
-                sleep(Duration::from_secs(4)).await;
-                continue;
+            if !el_block_fresh {
+                warn!(el_block_age_secs = %el_block_age_str, threshold = BLOCK_RECENCY_THRESHOLD_SECS, "EL block is stale or check failed");
+            }
+            if !el_peers_ok {
+                warn!(el_peers = %el_peers_str, min = min_el_peers, "EL peers below threshold or check failed");
+            }
+            if !cl_healthy {
+                warn!(cl_health = %cl_health_str, "CL reports not healthy or check failed");
+            }
+            if !cl_peers_ok {
+                warn!(cl_peers = %cl_peers_str, min = min_cl_peers, "CL peers below threshold or check failed");
             }
         }
 
-        // Peer check doesn't work on goerli, so we skip it.
-        if ENV_CONFIG.network == Network::Goerli {
-            debug!("goerli network, skipping execution_node peer count check");
-        } else {
-            let min_peer_count = if ENV_CONFIG.network == Network::Mainnet {
-                5
-            } else {
-                2
-            };
-            let execution_node_peer_count = execution_node.peer_count().await;
-            match execution_node_peer_count {
-                Ok(execution_node_peer_count) => {
-                    if execution_node_peer_count < min_peer_count {
-                        info!(
-                            execution_node_peer_count,
-                            "execution_node has less than {min_peer_count} peers, not ready"
-                        );
-                        is_ready.store(false, Ordering::Relaxed);
-                        sleep(Duration::from_secs(4)).await;
-                        continue;
-                    } else {
-                        debug!("execution_node has more than {min_peer_count} peers");
-                    }
-                }
-                Err(e) => {
-                    debug!("execution_node peer count check failed: {}, not ready", e);
-                    is_ready.store(false, Ordering::Relaxed);
-                    sleep(Duration::from_secs(4)).await;
-                    continue;
-                }
-            }
-        }
+        is_ready.store(ready, Ordering::Relaxed);
 
-        info!("execution_node is ready");
-
-        let lighthouse_peer_counts = lighthouse.peer_counts().await?;
-        let lighthouse_peer_count = lighthouse_peer_counts.peer_count();
-        if lighthouse_peer_count < 10 {
-            info!(
-                lighthouse_peer_count,
-                "lighthouse has less than 10 peers, not ready"
-            );
-            is_ready.store(false, Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse has more than 10 peers");
-        }
-
-        let lighthouse_sync_status = lighthouse.sync_status().await?;
-
-        if lighthouse_sync_status.is_syncing() {
-            info!("lighthouse is syncing, not ready");
-            is_ready.store(false, Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse is not syncing");
-        }
-
-        if lighthouse_sync_status.is_optimistic() {
-            info!("lighthouse sync is optimistic, not ready");
-            is_ready.store(false, Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse is not optimistic");
-        }
-
-        if lighthouse_sync_status.is_el_offline() {
-            info!("lighthouse says is el offline, not ready");
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse is not el offline");
-        }
-
-        let sync_distance = lighthouse_sync_status.sync_distance();
-        // We allow to be one slot behind, this naturally happens all the time.
-        if sync_distance > 1 {
-            info!(
-                sync_distance,
-                "lighthouse sync distance is greater than 0, not ready"
-            );
-            is_ready.store(false, std::sync::atomic::Ordering::Relaxed);
-            sleep(Duration::from_secs(4)).await;
-            continue;
-        } else {
-            debug!("lighthouse sync distance is 0");
-        }
-
-        info!("lighthouse is ready");
-
-        info!("beacon node is ready for traffic");
-        is_ready.store(true, Ordering::Relaxed);
-
-        debug!("sleeping 4s until next check");
         tokio::select! {
             _ = sleep(Duration::from_secs(4)) => {},
             _ = &mut main_shutdown_rx => { break; }

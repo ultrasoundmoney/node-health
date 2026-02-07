@@ -1,6 +1,6 @@
+use node_health::consensus::ConsensusNode;
 use node_health::env::ENV_CONFIG;
 use node_health::execution_node::ExecutionNode;
-use node_health::lighthouse::Lighthouse;
 
 #[tokio::test]
 async fn test_execution_node_peer_count() -> anyhow::Result<()> {
@@ -10,9 +10,18 @@ async fn test_execution_node_peer_count() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_execution_node_sync_status() -> anyhow::Result<()> {
+async fn test_execution_node_is_syncing() -> anyhow::Result<()> {
     let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
-    execution_node.syncing().await?;
+    execution_node.is_syncing().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_execution_node_block_age() -> anyhow::Result<()> {
+    let execution_node = ExecutionNode::new(ENV_CONFIG.execution_node_url.clone());
+    let age = execution_node.latest_block_age_secs().await?;
+    // A synced node should have a block younger than a few minutes.
+    assert!(age < 300, "block age {age}s seems too old");
     Ok(())
 }
 
@@ -24,25 +33,25 @@ async fn test_execution_node_ping_ok() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_lighthouse_peer_counts() -> anyhow::Result<()> {
-    let lighthouse = Lighthouse::new(ENV_CONFIG.beacon_url.clone());
-    let peer_counts = lighthouse.peer_counts().await?;
+async fn test_consensus_peer_counts() -> anyhow::Result<()> {
+    let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
+    let peer_counts = consensus.peer_counts().await?;
     dbg!(peer_counts);
     Ok(())
 }
 
 #[tokio::test]
-async fn test_lighthouse_sync_status() -> anyhow::Result<()> {
-    let lighthouse = Lighthouse::new(ENV_CONFIG.beacon_url.clone());
-    let sync_status = lighthouse.sync_status().await?;
-    dbg!(sync_status);
+async fn test_consensus_health() -> anyhow::Result<()> {
+    let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
+    let status = consensus.health().await?;
+    assert!(status == 200 || status == 206, "unexpected health status: {status}");
     Ok(())
 }
 
 #[tokio::test]
-async fn test_lighthouse_ping_ok() -> anyhow::Result<()> {
-    let lighthouse = Lighthouse::new(ENV_CONFIG.beacon_url.clone());
-    let ping_ok = lighthouse.ping_ok().await?;
+async fn test_consensus_ping_ok() -> anyhow::Result<()> {
+    let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
+    let ping_ok = consensus.ping_ok().await?;
     dbg!(ping_ok);
     Ok(())
 }
