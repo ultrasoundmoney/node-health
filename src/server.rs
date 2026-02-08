@@ -43,8 +43,7 @@ pub async fn serve(is_ready: Arc<AtomicBool>, shutdown_rx: Receiver<()>) {
 
         info!(address, port, "server listening");
 
-        let socket_addr: std::net::SocketAddr =
-            format!("{address}:{port}").parse().unwrap();
+        let socket_addr: std::net::SocketAddr = format!("{address}:{port}").parse().unwrap();
 
         let listener = tokio::net::TcpListener::bind(socket_addr)
             .await
