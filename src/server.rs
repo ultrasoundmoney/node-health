@@ -4,9 +4,8 @@ use std::sync::{
 };
 
 use anyhow::Context;
-use axum::{extract::State, response::IntoResponse, routing::get, Router, Server};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Router};
 use node_health::env::{self, ENV_CONFIG};
-use reqwest::StatusCode;
 use tokio::sync::oneshot::Receiver;
 use tracing::{error, info};
 
@@ -24,7 +23,7 @@ async fn is_ready_handler(state: State<AppState>) -> impl IntoResponse {
 }
 
 pub async fn serve(is_ready: Arc<AtomicBool>, shutdown_rx: Receiver<()>) {
-    let result = {
+    let result = async {
         let state = AppState { is_ready };
 
         let app = Router::new()
@@ -44,16 +43,21 @@ pub async fn serve(is_ready: Arc<AtomicBool>, shutdown_rx: Receiver<()>) {
 
         info!(address, port, "server listening");
 
-        let socket_addr = format!("{address}:{port}").parse().unwrap();
+        let socket_addr: std::net::SocketAddr =
+            format!("{address}:{port}").parse().unwrap();
 
-        Server::bind(&socket_addr)
-            .serve(app.into_make_service())
+        let listener = tokio::net::TcpListener::bind(socket_addr)
+            .await
+            .context("binding TCP listener")?;
+
+        axum::serve(listener, app)
             .with_graceful_shutdown(async move {
-                let _ = &shutdown_rx.await;
+                let _ = shutdown_rx.await;
             })
             .await
             .context("running server")
-    };
+    }
+    .await;
 
     match result {
         Ok(_) => info!("server thread exiting"),
