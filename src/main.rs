@@ -78,20 +78,14 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         // Run all checks, capturing errors as strings rather than propagating.
-        let el_syncing = execution_node
-            .is_syncing()
-            .await
-            .map_err(|e| e.to_string());
+        let el_syncing = execution_node.is_syncing().await.map_err(|e| e.to_string());
 
         let el_block_age = execution_node
             .latest_block_age_secs()
             .await
             .map_err(|e| e.to_string());
 
-        let el_peers = execution_node
-            .peer_count()
-            .await
-            .map_err(|e| e.to_string());
+        let el_peers = execution_node.peer_count().await.map_err(|e| e.to_string());
 
         let cl_health = consensus.health().await.map_err(|e| e.to_string());
 
@@ -107,9 +101,15 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|age| *age < BLOCK_RECENCY_THRESHOLD_SECS)
             .unwrap_or(false);
-        let el_peers_ok = el_peers.as_ref().map(|p| *p >= min_el_peers).unwrap_or(false);
+        let el_peers_ok = el_peers
+            .as_ref()
+            .map(|p| *p >= min_el_peers)
+            .unwrap_or(false);
         let cl_healthy = cl_health.as_ref() == Ok(&200);
-        let cl_peers_ok = cl_peers.as_ref().map(|p| *p >= min_cl_peers).unwrap_or(false);
+        let cl_peers_ok = cl_peers
+            .as_ref()
+            .map(|p| *p >= min_cl_peers)
+            .unwrap_or(false);
 
         let ready = el_not_syncing && el_block_fresh && el_peers_ok && cl_healthy && cl_peers_ok;
 

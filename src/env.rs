@@ -100,7 +100,9 @@ pub fn get_network() -> Network {
             "mainnet" => Network::Mainnet,
             "holesky" => Network::Holesky,
             "hoodi" => Network::Hoodi,
-            _ => panic!("NETWORK present: {str}, but not one of [mainnet, holesky, hoodi], panicking!"),
+            _ => panic!(
+                "NETWORK present: {str}, but not one of [mainnet, holesky, hoodi], panicking!"
+            ),
         },
     }
 }

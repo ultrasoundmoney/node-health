@@ -50,7 +50,10 @@ async fn test_consensus_peer_counts() -> anyhow::Result<()> {
 async fn test_consensus_health() -> anyhow::Result<()> {
     let consensus = ConsensusNode::new(ENV_CONFIG.beacon_url.clone());
     let status = consensus.health().await?;
-    assert!(status == 200 || status == 206, "unexpected health status: {status}");
+    assert!(
+        status == 200 || status == 206,
+        "unexpected health status: {status}"
+    );
     Ok(())
 }
 
